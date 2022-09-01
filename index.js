@@ -1,6 +1,5 @@
-import nodeFetch, { Response } from "node-fetch";
+import nodeFetch, { Response, } from "node-fetch";
 import { visit, SKIP, EXIT, CONTINUE } from "estree-util-visit";
-import { convert } from "unist-util-is";
 import fs from "node:fs";
 import { URL } from "node:url";
 import crypto from "node:crypto";
@@ -81,13 +80,6 @@ const recmaStaticImages = function (options) {
     const { cacheDir } = options ?? {};
     if (cacheDir === undefined || cacheDir === null)
         throw new Error(`Required option 'cacheDir' not provided`);
-    const isProgram = convert("Program");
-    const isImportSpecifier = convert("ImportSpecifier");
-    const isCallExpression = convert("CallExpression");
-    const isIdentifier = convert("Identifier");
-    const isObjectExpression = convert("ObjectExpression");
-    const isProperty = convert("Property");
-    const isMemberExpression = convert("MemberExpression");
     console.log("activated plugin");
     return function (tree) {
         console.log("In ur transformer");
@@ -98,7 +90,9 @@ const recmaStaticImages = function (options) {
         const imports = [];
         visit(tree, (node) => {
             console.log("_VISITOR_1 NODE", JSON.stringify(node));
-            if (isImportSpecifier(node) && /^jsxs?$/.test(node.imported.name)) {
+            if (node.type === "ImportSpecifier" &&
+                "imported" in node &&
+                /^jsxs?$/.test(node.imported.name)) {
                 console.log("_IMPORT SPECIFIER", JSON.stringify(node));
                 jsxFactorySpecifiers.add(node.local.name);
                 return SKIP;
@@ -108,17 +102,20 @@ const recmaStaticImages = function (options) {
         visit(tree, {
             enter: function (node) {
                 console.log("_VISITOR_2 NODE");
-                if (isCallExpression(node) &&
-                    isIdentifier(node.callee) &&
+                if (node.type === "CallExpression" &&
+                    "callee" in node &&
+                    node.callee.type === "Identifier" &&
                     jsxFactorySpecifiers.has(node.callee.name) &&
-                    isMemberExpression(node.arguments[0]) &&
+                    node.arguments[0] &&
+                    node.arguments[0].type === "MemberExpression" &&
                     node.arguments[0].property.type === "Identifier" &&
                     node.arguments[0].property.name === "img" &&
-                    isObjectExpression(node.arguments[1])) {
+                    node.arguments[1] &&
+                    node.arguments[1].type === "ObjectExpression") {
                     console.log("FOUND CANDIDATE", JSON.stringify(node));
                     const [argument0, argument1, ...rest] = node.arguments;
                     const newProperties = argument1.properties.map((property) => {
-                        if (!isProperty(property) ||
+                        if (property.type !== "Property" ||
                             property.key.type !== "Identifier" ||
                             property.key.name !== "src" ||
                             property.value.type !== "Literal" ||
@@ -236,7 +233,7 @@ const recmaStaticImages = function (options) {
                 return CONTINUE;
             },
             leave: function (node) {
-                if (isProgram(node)) {
+                if (node.type === "Program" && "body" in node) {
                     for (const imported of imports) {
                         if (imported)
                             node.body.unshift(imported);

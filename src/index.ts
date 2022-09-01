@@ -3,17 +3,15 @@ import type { Plugin } from "unified";
 import type {
   Program,
   ImportDeclaration,
-  ImportSpecifier,
-  CallExpression,
-  Identifier,
-  ObjectExpression,
   Property,
-  MemberExpression,
 } from "estree-jsx";
 
-import nodeFetch, { Response, type RequestInfo, type RequestInit } from "node-fetch";
+import nodeFetch, {
+  Response,
+  type RequestInfo,
+  type RequestInit,
+} from "node-fetch";
 import { visit, SKIP, EXIT, CONTINUE } from "estree-util-visit";
-import { convert } from "unist-util-is";
 import fs from "node:fs";
 import { URL } from "node:url";
 import crypto from "node:crypto";
@@ -141,13 +139,6 @@ const recmaStaticImages: Plugin<
   const { cacheDir } = options ?? {};
   if (cacheDir === undefined || cacheDir === null)
     throw new Error(`Required option 'cacheDir' not provided`);
-  const isProgram = convert<Program>("Program");
-  const isImportSpecifier = convert<ImportSpecifier>("ImportSpecifier");
-  const isCallExpression = convert<CallExpression>("CallExpression");
-  const isIdentifier = convert<Identifier>("Identifier");
-  const isObjectExpression = convert<ObjectExpression>("ObjectExpression");
-  const isProperty = convert<Property>("Property");
-  const isMemberExpression = convert<MemberExpression>("MemberExpression");
   console.log("activated plugin");
   return function (tree) {
     console.log("In ur transformer");
@@ -156,8 +147,12 @@ const recmaStaticImages: Plugin<
     const cache = cacheDir.replace(/\/+$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
     visit(tree, (node) => {
-      console.log("_VISITOR_1 NODE", JSON.stringify(node))
-      if (isImportSpecifier(node) && /^jsxs?$/.test(node.imported.name)) {
+      console.log("_VISITOR_1 NODE", JSON.stringify(node));
+      if (
+        node.type === "ImportSpecifier" &&
+        "imported" in node &&
+        /^jsxs?$/.test(node.imported.name)
+      ) {
         console.log("_IMPORT SPECIFIER", JSON.stringify(node));
         jsxFactorySpecifiers.add(node.local.name);
         return SKIP;
@@ -166,37 +161,91 @@ const recmaStaticImages: Plugin<
     });
     visit(tree, {
       enter: function (node) {
-        console.log("_VISITOR_2 NODE")
+        console.log("_VISITOR_2 NODE");
         if (
-          isCallExpression(node) &&
-          isIdentifier(node.callee) &&
+          node.type === "CallExpression" &&
+          "callee" in node &&
+          node.callee.type === "Identifier" &&
           jsxFactorySpecifiers.has(node.callee.name) &&
-          isMemberExpression(node.arguments[0]) &&
+          node.arguments[0] &&
+          node.arguments[0].type === "MemberExpression" &&
           node.arguments[0].property.type === "Identifier" &&
           node.arguments[0].property.name === "img" &&
-          isObjectExpression(node.arguments[1])
+          node.arguments[1] &&
+          node.arguments[1].type === "ObjectExpression"
         ) {
           console.log("FOUND CANDIDATE", JSON.stringify(node));
           const [argument0, argument1, ...rest] = node.arguments;
-          const newProperties =
-            argument1.properties.map((property) => {
-              if (
-                !isProperty(property) ||
-                property.key.type !== "Identifier" ||
-                property.key.name !== "src" ||
-                property.value.type !== "Literal" ||
-                typeof property.value.value !== "string"
-              ) {
-                return property;
-              }
-              const source = property.value.value;
-              const extension = source.split(".").pop();
-              let url: URL | undefined;
-              try {
-                url = new URL(source);
-              } catch {
-                console.log(source);
-                const buffer = fs.readFileSync(source);
+          const newProperties = argument1.properties.map((property) => {
+            if (
+              property.type !== "Property" ||
+              property.key.type !== "Identifier" ||
+              property.key.name !== "src" ||
+              property.value.type !== "Literal" ||
+              typeof property.value.value !== "string"
+            ) {
+              return property;
+            }
+            const source = property.value.value;
+            const extension = source.split(".").pop();
+            let url: URL | undefined;
+            try {
+              url = new URL(source);
+            } catch {
+              console.log(source);
+              const buffer = fs.readFileSync(source);
+              const hash = crypto
+                .createHash("sha256")
+                .update(buffer)
+                .digest("base64");
+              const path = `${cache}/${hash}${
+                extension ? `.${extension}` : ""
+              }`;
+              fs.writeFileSync(path, buffer);
+              imports.push({
+                source: {
+                  type: "Literal",
+                  value: path,
+                },
+                specifiers: [
+                  {
+                    type: "ImportDefaultSpecifier",
+                    local: {
+                      name: `${hash}`,
+                      type: "Identifier",
+                    },
+                  },
+                ],
+                type: "ImportDeclaration",
+              });
+              const returnValue: Property = {
+                type: "Property",
+                key: {
+                  type: "Identifier",
+                  name: "src",
+                },
+                value: {
+                  type: "Identifier",
+                  name: `${hash}`,
+                },
+                kind: "init",
+                method: false,
+                shorthand: false,
+                computed: false,
+              };
+              return returnValue;
+            }
+            if (url instanceof URL) {
+              const fetcher = makeRetryableFetcher({
+                retries: 5,
+                delay: 3000,
+              });
+              fetcher.call(undefined, url.href).then((response) => {
+                if (!response || !response.body)
+                  throw new Error(
+                    `Missing body in response for resource: ${url}`
+                  );
+                const buffer = response.body.read();
                 const hash = crypto
                   .createHash("sha256")
                   .update(buffer)
@@ -236,63 +285,11 @@ const recmaStaticImages: Plugin<
                   shorthand: false,
                   computed: false,
                 };
-                return returnValue
-              }
-              if (url instanceof URL) {
-                const fetcher = makeRetryableFetcher({
-                  retries: 5,
-                  delay: 3000,
-                });
-                fetcher.call(undefined, url.href).then((response) => {
-                  if (!response || !response.body)
-                    throw new Error(
-                      `Missing body in response for resource: ${url}`
-                    );
-                  const buffer = response.body.read();
-                  const hash = crypto
-                    .createHash("sha256")
-                    .update(buffer)
-                    .digest("base64");
-                  const path = `${cache}/${hash}${
-                    extension ? `.${extension}` : ""
-                  }`;
-                  fs.writeFileSync(path, buffer)
-                  imports.push({
-                    source: {
-                      type: "Literal",
-                      value: path,
-                    },
-                    specifiers: [
-                      {
-                        type: "ImportDefaultSpecifier",
-                        local: {
-                          name: `${hash}`,
-                          type: "Identifier",
-                        },
-                      },
-                    ],
-                    type: "ImportDeclaration",
-                  });
-                  const returnValue: Property = {
-                    type: "Property",
-                    key: {
-                      type: "Identifier",
-                      name: "src",
-                    },
-                    value: {
-                      type: "Identifier",
-                      name: `${hash}`,
-                    },
-                    kind: "init",
-                    method: false,
-                    shorthand: false,
-                    computed: false,
-                  };
-                  return returnValue
-                });
-              }
-              return property;
-            });
+                return returnValue;
+              });
+            }
+            return property;
+          });
           node = {
             ...node,
             arguments: [
@@ -305,7 +302,7 @@ const recmaStaticImages: Plugin<
         return CONTINUE;
       },
       leave: function (node) {
-        if (isProgram(node)) {
+        if (node.type === "Program" && "body" in node) {
           for (const imported of imports) {
             if (imported) node.body.unshift(imported);
           }
