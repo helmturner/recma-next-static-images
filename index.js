@@ -96,9 +96,7 @@ const recmaStaticImages = function (options) {
                 jsxFactorySpecifiers.add(node.local.name);
                 return SKIP;
             }
-            if (node.type === "Program")
-                return CONTINUE;
-            return SKIP;
+            return CONTINUE;
         });
         visit(tree, {
             enter: function (node) {
