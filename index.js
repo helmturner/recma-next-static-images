@@ -89,7 +89,6 @@ const recmaStaticImages = function (options) {
         const cache = cacheDir.replace(/\/+$/, "");
         const imports = [];
         visit(tree, (node) => {
-            console.log("_VISITOR_1 NODE", JSON.stringify(node));
             if (node.type === "ImportSpecifier" &&
                 "imported" in node &&
                 /^jsxs?$/.test(node.imported.name)) {
@@ -97,7 +96,7 @@ const recmaStaticImages = function (options) {
                 jsxFactorySpecifiers.add(node.local.name);
                 return SKIP;
             }
-            if (node.type === "PROGRAM")
+            if (node.type === "Program")
                 return CONTINUE;
             return SKIP;
         });

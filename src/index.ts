@@ -147,7 +147,6 @@ const recmaStaticImages: Plugin<
     const cache = cacheDir.replace(/\/+$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
     visit(tree, (node) => {
-      console.log("_VISITOR_1 NODE", JSON.stringify(node));
       if (
         node.type === "ImportSpecifier" &&
         "imported" in node &&
@@ -157,7 +156,7 @@ const recmaStaticImages: Plugin<
         jsxFactorySpecifiers.add(node.local.name);
         return SKIP;
       }
-      if (node.type === "PROGRAM") return CONTINUE;
+      if (node.type === "Program") return CONTINUE;
       return SKIP;
     });
     visit(tree, {
