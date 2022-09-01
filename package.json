@@ -1,0 +1,69 @@
+{
+    "name": "recma-next-static-images",
+    "version": "0.0.1",
+    "type": "module",
+    "engines": {
+        "node": ">=14.16"
+    },
+    "description": "recma plugin to make @mdx-js/loader play nice with @next/image for static pages",
+    "exports": "./index.js",
+    "scripts": {
+        "lint": "eslint --ext .js,.ts ./",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "eslintConfig": {
+        "env": {
+            "es2020": true,
+            "node": true
+        },
+        "parserOptions": {
+            "ecmaVersion": 2020,
+            "sourceType": "module"
+        },
+        "plugins": [
+            "unicorn",
+            "@typescript-eslint"
+        ],
+        "extends": [
+            "eslint:recommended",
+            "plugin:@typescript-eslint/recommended",
+            "plugin:unicorn/recommended"
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alecvision/recma-next-static-images.git"
+    },
+    "keywords": [
+        "unified",
+        "recma",
+        "esast",
+        "estree",
+        "plugin",
+        "markdown",
+        "mdx",
+        "next",
+        "image",
+        "ast"
+    ],
+    "author": "Alec Helmturner <git@alecvision.com>",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/alecvision/recma-next-static-images/issues"
+    },
+    "homepage": "https://github.com/alecvision/recma-next-static-images#readme",
+    "devDependencies": {
+        "@types/node": "^18.7.14",
+        "@typescript-eslint/eslint-plugin": "^5.30.5",
+        "@typescript-eslint/parser": "^5.30.5",
+        "eslint": "^8.19.0",
+        "eslint-plugin-unicorn": "^43.0.0",
+        "typescript": "^4.7.4",
+        "unified": "^10.1.2"
+    },
+    "dependencies": {
+        "estree-util-visit": "^1.2.0",
+        "node-fetch": "^3.2.10",
+        "unist-util-is": "^5.1.1"
+    }
+}
