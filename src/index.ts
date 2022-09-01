@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/numeric-separators-style */
 import type { Plugin } from "unified";
 import type {
   Program,
@@ -155,6 +156,7 @@ const recmaStaticImages: Plugin<
     const cache = cacheDir.replace(/\/+$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
     visit(tree, (node) => {
+      console.log("_VISITOR_1 NODE", JSON.stringify(node))
       if (isImportSpecifier(node) && /^jsxs?$/.test(node.imported.name)) {
         console.log("_IMPORT SPECIFIER", JSON.stringify(node));
         jsxFactorySpecifiers.add(node.local.name);
@@ -164,6 +166,7 @@ const recmaStaticImages: Plugin<
     });
     visit(tree, {
       enter: function (node) {
+        console.log("_VISITOR_2 NODE")
         if (
           isCallExpression(node) &&
           isIdentifier(node.callee) &&
@@ -173,7 +176,7 @@ const recmaStaticImages: Plugin<
           node.arguments[0].property.name === "img" &&
           isObjectExpression(node.arguments[1])
         ) {
-          console.log(JSON.stringify(node));
+          console.log("FOUND CANDIDATE", JSON.stringify(node));
           const [argument0, argument1, ...rest] = node.arguments;
           const newProperties =
             argument1.properties.map((property) => {
