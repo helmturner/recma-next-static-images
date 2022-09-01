@@ -157,6 +157,7 @@ const recmaStaticImages: Plugin<
         jsxFactorySpecifiers.add(node.local.name);
         return SKIP;
       }
+      if (node.type === "PROGRAM") return CONTINUE;
       return SKIP;
     });
     visit(tree, {
