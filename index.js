@@ -220,6 +220,7 @@ const recmaStaticImages = function (options) {
                         }
                         return property;
                     });
+                    console.log("_NEWPROPS", JSON.stringify(newProperties, undefined, "  "));
                     node = {
                         ...node,
                         arguments: [
