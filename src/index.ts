@@ -326,7 +326,7 @@ const recmaStaticImages: Plugin<
         return SKIP;
       },
     });
-    return;
+    return tree;
   };
 };
 

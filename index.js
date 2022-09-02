@@ -255,7 +255,7 @@ const recmaStaticImages = function (options) {
                 return SKIP;
             },
         });
-        return;
+        return tree;
     };
 };
 export default recmaStaticImages;
