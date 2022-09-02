@@ -1,8 +1,9 @@
-import nodeFetch, { Response, } from "node-fetch";
 import { visit, SKIP, EXIT, CONTINUE } from "estree-util-visit";
 import fs from "node:fs";
+import path from "node:path";
 import { URL } from "node:url";
 import crypto from "node:crypto";
+import nodeFetch, { Response, } from "node-fetch";
 const parseRetryAfterHeader = (response) => {
     if (!(response instanceof Response))
         throw new TypeError(`Expected 'response' to be an instance of 'Response'}`);
@@ -121,7 +122,12 @@ const recmaStaticImages = function (options) {
                             typeof property.value.value !== "string") {
                             return property;
                         }
-                        const source = property.value.value;
+                        if (!vfile.history[0])
+                            throw new Error(`Expected vfile history to be non-empty for vfile: ${vfile}`);
+                        const directory = vfile.history[0].replace(/[^/]*$/, "");
+                        console.log(directory);
+                        const source = path.resolve(directory, property.value.value);
+                        console.log(source);
                         const extension = source.split(".").pop();
                         let url;
                         try {

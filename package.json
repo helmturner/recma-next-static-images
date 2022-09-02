@@ -1,6 +1,6 @@
 {
     "name": "recma-next-static-images",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "type": "module",
     "engines": {
         "node": ">=14.16"
