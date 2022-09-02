@@ -79,9 +79,11 @@ const makeRetryableFetcher = (options) => {
 };
 const recmaStaticImages = function (options) {
     const { cacheDirectory } = options ?? {};
-    if (cacheDirectory === undefined || cacheDirectory === null)
+    if (cacheDirectory === undefined || cacheDirectory === null) {
         throw new Error(`Required option 'cacheDirectory' not provided`);
+    }
     const resolvedCacheDirectory = path.resolve(cacheDirectory);
+    console.log("__RESOLVED_CACHE_DIR", resolvedCacheDirectory);
     console.log("activated plugin");
     return function (tree, vfile) {
         console.log("In ur transformer");
