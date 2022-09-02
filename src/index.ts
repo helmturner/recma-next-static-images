@@ -141,7 +141,7 @@ const recmaStaticImages: Plugin<
   if (cacheDir === undefined || cacheDir === null)
     throw new Error(`Required option 'cacheDir' not provided`);
   console.log("activated plugin");
-  return function (tree) {
+  return function (tree, vfile) {
     console.log("In ur transformer");
     const jsxFactorySpecifiers = new Set<string>();
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
@@ -193,7 +193,7 @@ const recmaStaticImages: Plugin<
               url = new URL(source);
             } catch {
               console.log(source);
-              console.log(__dirname)
+              console.log("_VFILE", JSON.stringify(vfile, undefined, "  "))
               const buffer = fs.readFileSync(source);
               const hash = crypto
                 .createHash("sha256")
