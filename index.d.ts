@@ -1,7 +1,7 @@
 import type { Plugin } from "unified";
 import type { Program } from "estree-jsx";
 declare type Options = {
-    cacheDir: string | undefined;
+    cacheDirectory: string | undefined;
 } | null | undefined;
 declare const recmaStaticImages: Plugin<[
     (Options | undefined | void)?

@@ -78,16 +78,17 @@ const makeRetryableFetcher = (options) => {
     return fetcher;
 };
 const recmaStaticImages = function (options) {
-    const { cacheDir } = options ?? {};
-    if (cacheDir === undefined || cacheDir === null)
-        throw new Error(`Required option 'cacheDir' not provided`);
+    const { cacheDirectory } = options ?? {};
+    if (cacheDirectory === undefined || cacheDirectory === null)
+        throw new Error(`Required option 'cacheDirectory' not provided`);
+    const resolvedCacheDirectory = path.resolve(cacheDirectory);
     console.log("activated plugin");
     return function (tree, vfile) {
         console.log("In ur transformer");
         const jsxFactorySpecifiers = new Set();
-        if (!fs.existsSync(cacheDir))
-            fs.mkdirSync(cacheDir);
-        const cache = cacheDir.replace(/\/+$/, "");
+        if (!fs.existsSync(resolvedCacheDirectory))
+            fs.mkdirSync(resolvedCacheDirectory);
+        const cache = resolvedCacheDirectory.replace(/\/+$/, "");
         const imports = [];
         let imageCounter = 0;
         visit(tree, (node) => {

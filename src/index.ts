@@ -1,15 +1,10 @@
 /* eslint-disable unicorn/numeric-separators-style */
 import type { Plugin } from "unified";
-import type {
-  Program,
-  ImportDeclaration,
-  Property,
-} from "estree-jsx";
-
+import type { Program, ImportDeclaration, Property } from "estree-jsx";
 
 import { visit, SKIP, EXIT, CONTINUE } from "estree-util-visit";
 import fs from "node:fs";
-import path from "node:path"
+import path from "node:path";
 import { URL } from "node:url";
 import crypto from "node:crypto";
 import nodeFetch, {
@@ -131,22 +126,24 @@ const makeRetryableFetcher = (options: FetcherOptions) => {
   return fetcher;
 };
 
-type Options = { cacheDir: string | undefined } | null | undefined;
+type Options = { cacheDirectory: string | undefined } | null | undefined;
 
 const recmaStaticImages: Plugin<
   [(Options | undefined | void)?],
   Program,
   Program
 > = function (options) {
-  const { cacheDir } = options ?? {};
-  if (cacheDir === undefined || cacheDir === null)
-    throw new Error(`Required option 'cacheDir' not provided`);
+  const { cacheDirectory } = options ?? {};
+  if (cacheDirectory === undefined || cacheDirectory === null)
+    throw new Error(`Required option 'cacheDirectory' not provided`);
+  const resolvedCacheDirectory = path.resolve(cacheDirectory);
   console.log("activated plugin");
   return function (tree, vfile) {
     console.log("In ur transformer");
     const jsxFactorySpecifiers = new Set<string>();
-    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
-    const cache = cacheDir.replace(/\/+$/, "");
+    if (!fs.existsSync(resolvedCacheDirectory))
+      fs.mkdirSync(resolvedCacheDirectory);
+    const cache = resolvedCacheDirectory.replace(/\/+$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
     let imageCounter = 0;
     visit(tree, (node) => {
@@ -189,19 +186,22 @@ const recmaStaticImages: Plugin<
               return property;
             }
             imageCounter += 1;
-            if (!vfile.history[0]) throw new Error(`Expected vfile history to be non-empty for vfile: ${vfile}`)
+            if (!vfile.history[0])
+              throw new Error(
+                `Expected vfile history to be non-empty for vfile: ${vfile}`
+              );
             const directory = vfile.history[0].replace(/[^/]*$/, "");
-            console.log(directory)
+            console.log(directory);
             const source = path.resolve(directory, property.value.value);
 
-            console.log(source)
+            console.log(source);
             const extension = source.split(".").pop();
             let url: URL | undefined;
             try {
               url = new URL(source);
             } catch {
               console.log(source);
-              console.log("_VFILE", JSON.stringify(vfile, undefined, "  "))
+              console.log("_VFILE", JSON.stringify(vfile, undefined, "  "));
               const buffer = fs.readFileSync(source);
               const hash = crypto
                 .createHash("sha256")
@@ -299,7 +299,10 @@ const recmaStaticImages: Plugin<
             }
             return property;
           });
-          console.log("_NEWPROPS", JSON.stringify(newProperties, undefined, "  "))
+          console.log(
+            "_NEWPROPS",
+            JSON.stringify(newProperties, undefined, "  ")
+          );
           node = {
             ...node,
             arguments: [
