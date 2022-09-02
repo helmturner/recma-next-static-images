@@ -148,6 +148,7 @@ const recmaStaticImages: Plugin<
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
     const cache = cacheDir.replace(/\/+$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
+    let imageCounter = 0;
     visit(tree, (node) => {
       if (
         node.type === "ImportSpecifier" &&
@@ -187,10 +188,12 @@ const recmaStaticImages: Plugin<
             ) {
               return property;
             }
+            imageCounter += 1;
             if (!vfile.history[0]) throw new Error(`Expected vfile history to be non-empty for vfile: ${vfile}`)
             const directory = vfile.history[0].replace(/[^/]*$/, "");
             console.log(directory)
             const source = path.resolve(directory, property.value.value);
+
             console.log(source)
             const extension = source.split(".").pop();
             let url: URL | undefined;
@@ -217,7 +220,7 @@ const recmaStaticImages: Plugin<
                   {
                     type: "ImportDefaultSpecifier",
                     local: {
-                      name: `${hash}`,
+                      name: `static_image_${imageCounter}`,
                       type: "Identifier",
                     },
                   },
@@ -232,7 +235,7 @@ const recmaStaticImages: Plugin<
                 },
                 value: {
                   type: "Identifier",
-                  name: `${hash}`,
+                  name: `static_image_${imageCounter}`,
                 },
                 kind: "init",
                 method: false,
@@ -269,7 +272,7 @@ const recmaStaticImages: Plugin<
                     {
                       type: "ImportDefaultSpecifier",
                       local: {
-                        name: `${hash}`,
+                        name: `static_image_${imageCounter}`,
                         type: "Identifier",
                       },
                     },
@@ -284,7 +287,7 @@ const recmaStaticImages: Plugin<
                   },
                   value: {
                     type: "Identifier",
-                    name: `${hash}`,
+                    name: `static_image_${imageCounter}`,
                   },
                   kind: "init",
                   method: false,

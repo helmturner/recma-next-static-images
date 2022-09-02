@@ -89,6 +89,7 @@ const recmaStaticImages = function (options) {
             fs.mkdirSync(cacheDir);
         const cache = cacheDir.replace(/\/+$/, "");
         const imports = [];
+        let imageCounter = 0;
         visit(tree, (node) => {
             if (node.type === "ImportSpecifier" &&
                 "imported" in node &&
@@ -122,6 +123,7 @@ const recmaStaticImages = function (options) {
                             typeof property.value.value !== "string") {
                             return property;
                         }
+                        imageCounter += 1;
                         if (!vfile.history[0])
                             throw new Error(`Expected vfile history to be non-empty for vfile: ${vfile}`);
                         const directory = vfile.history[0].replace(/[^/]*$/, "");
@@ -152,7 +154,7 @@ const recmaStaticImages = function (options) {
                                     {
                                         type: "ImportDefaultSpecifier",
                                         local: {
-                                            name: `${hash}`,
+                                            name: `static_image_${imageCounter}`,
                                             type: "Identifier",
                                         },
                                     },
@@ -167,7 +169,7 @@ const recmaStaticImages = function (options) {
                                 },
                                 value: {
                                     type: "Identifier",
-                                    name: `${hash}`,
+                                    name: `static_image_${imageCounter}`,
                                 },
                                 kind: "init",
                                 method: false,
@@ -200,7 +202,7 @@ const recmaStaticImages = function (options) {
                                         {
                                             type: "ImportDefaultSpecifier",
                                             local: {
-                                                name: `${hash}`,
+                                                name: `static_image_${imageCounter}`,
                                                 type: "Identifier",
                                             },
                                         },
@@ -215,7 +217,7 @@ const recmaStaticImages = function (options) {
                                     },
                                     value: {
                                         type: "Identifier",
-                                        name: `${hash}`,
+                                        name: `static_image_${imageCounter}`,
                                     },
                                     kind: "init",
                                     method: false,
