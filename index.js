@@ -129,6 +129,7 @@ const recmaStaticImages = function (options) {
                         }
                         catch {
                             console.log(source);
+                            console.log(__dirname);
                             const buffer = fs.readFileSync(source);
                             const hash = crypto
                                 .createHash("sha256")

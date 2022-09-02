@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/prefer-module */
 /* eslint-disable unicorn/numeric-separators-style */
 import type { Plugin } from "unified";
 import type {
@@ -192,6 +193,7 @@ const recmaStaticImages: Plugin<
               url = new URL(source);
             } catch {
               console.log(source);
+              console.log(__dirname)
               const buffer = fs.readFileSync(source);
               const hash = crypto
                 .createHash("sha256")
