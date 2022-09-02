@@ -233,19 +233,17 @@ const recmaStaticImages = function (options) {
                         return property;
                     });
                     console.log("_NEWPROPS", JSON.stringify(newProperties, undefined, "  "));
-                    node = {
-                        ...node,
-                        arguments: [
-                            argument0,
-                            { ...argument1, properties: newProperties },
-                            ...rest,
-                        ],
-                    };
+                    node.arguments = [
+                        argument0,
+                        { ...argument1, properties: newProperties },
+                        ...rest,
+                    ];
                 }
                 return CONTINUE;
             },
             leave: function (node) {
                 if (node.type === "Program" && "body" in node) {
+                    console.log(JSON.stringify(imports));
                     for (const imported of imports) {
                         if (imported)
                             node.body.unshift(imported);
