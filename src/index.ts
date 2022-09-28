@@ -1,10 +1,15 @@
 /* eslint-disable unicorn/numeric-separators-style */
 import type { Plugin } from "unified";
-import type { Program, ImportDeclaration, Property } from "estree-jsx";
+import type {
+  Program,
+  ImportDeclaration,
+  Property,
+  SpreadElement,
+} from "estree-jsx";
 
-import { visit, SKIP, EXIT, CONTINUE } from "estree-util-visit";
+import { visit, SKIP, CONTINUE, type Node, Visitor } from "estree-util-visit";
 import fs from "node:fs";
-import path from "node:path";
+import nodePath from "node:path";
 import { URL } from "node:url";
 import crypto from "node:crypto";
 import nodeFetch, {
@@ -12,159 +17,131 @@ import nodeFetch, {
   type RequestInfo,
   type RequestInit,
 } from "node-fetch";
+import type {
+  SimpleCallExpression,
+  Identifier,
+  MemberExpression,
+  ObjectExpression,
+} from "estree";
 
-const parseRetryAfterHeader = (response: Response) => {
-  if (!(response instanceof Response))
-    throw new TypeError(`Expected 'response' to be an instance of 'Response'}`);
-  const retryHeader = response.headers.get("retry-after");
-  if (retryHeader === null || retryHeader === undefined) return;
-  if (retryHeader.length > 30) {
-    throw new Error(
-      `Requested resource ${response.url} received a response with a 'retry-after' header that is too long: (${retryHeader})`
-    );
-  }
-  if (/^\d+$/.test(retryHeader)) {
-    const asNumber = Number.parseInt(retryHeader);
-    if (asNumber > 10000) {
-      throw new Error(
-        `Requested resource ${response.url} received a response with a 'retry-after' header greater than 10 seconds in the future: (${retryHeader})`
-      );
-    }
-    return asNumber;
-  }
-  return Date.parse(retryHeader) - Date.now();
+type ValidJsxImageConstructor = SimpleCallExpression & {
+  callee: Identifier;
+  arguments: [
+    component: MemberExpression & { property: Identifier & { name: "img" } },
+    children: ObjectExpression,
+    ...rest: unknown[]
+  ];
 };
-
-const wait = (ms = 0) => {
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
-      resolve();
-    }, ms);
-  });
-};
-
-type FetcherOptions = {
-  /**
-   * The maximum number of attempts
-   * @default 5
-   */
-  retries?: number | undefined;
-  /**
-   * Either a number of milliseconds to wait between requests, or a function
-   * which takes as an argument the number of elapsed attempts and
-   * returns a number of milliseconds.
-   * @default 500
-   */
-  delay?: number | undefined | ((attempts: number) => number);
-  /**
-   * A test that takes as it's argument the Response and returns a boolean.
-   * If `test` returns true, the fetch will be retried.
-   */
-  test?: undefined | ((response: Response) => boolean);
-};
-
 /**
- * Returns a custom implementation of fetch that retries
- * certain responses according to the arguments provided
+ * Find the local identifier assigned to the imported JSX factory(s)
+ * @example: `import theFactory from 'jsx'
  */
-const makeRetryableFetcher = (options: FetcherOptions) => {
-  const {
-    retries = 5,
-    delay = 500,
-    test = (r: Response) =>
-      [408, 409, 429, 500, 502, 503, 504].includes(r.status),
-  } = options || {};
-  if (typeof retries !== "number")
-    throw new TypeError(
-      `Invalid Parameters; Expected 'retries' to be a number, got: ${typeof retries}`
-    );
-  if (typeof delay !== "number" && typeof delay !== "function") {
-    throw new TypeError(
-      `Invalid Parameters; Expected 'delay' to be a number or a function returning a number, got: ${typeof delay}`
-    );
-  }
-  if (typeof test !== "function")
-    throw new TypeError(
-      `Invalid Parameters; Expected 'test' to be a function, got: ${typeof delay}`
-    );
-  let attempts = 0;
-  /* By creating a closure we allow the generated fetcher to
-    track it's own retries, since they are in scope.
-    JS classes are just syntactic sugar, so we don't need them! */
-  const fetcher = async (
-    input: RequestInfo,
-    init?: RequestInit | undefined
-  ): Promise<Response> => {
-    attempts += 1;
-    return nodeFetch(input, init)
-      .then(async (result) => {
-        let _delay = typeof delay === "function" ? delay(attempts) : delay;
-        if (test(result) && attempts < retries) {
-          _delay = parseRetryAfterHeader(result) ?? _delay;
-          console.warn({
-            message: `Request failed, retrying in ${_delay} seconds...`,
-            error: result.statusText,
-          });
-          await wait(_delay);
-          return fetcher(input, init);
-        }
-        return result;
-      })
-      .catch(async (error) => {
-        const _delay = typeof delay === "function" ? delay(attempts) : delay;
-        if (attempts < retries) {
-          console.warn({
-            message: `Request failed, retrying in ${delay} seconds...`,
-            error: "message" in error ? error.message : `${error}`,
-          });
-          await wait(_delay);
-          return fetcher(input, init);
-        }
-        throw error;
-      });
-  };
-  return fetcher;
+const getJsxFactorySpecifiers = (tree: Program) => {
+  const names = new Set<string>();
+  visit(tree, (node) => {
+    if (
+      node.type === "ImportSpecifier" &&
+      "imported" in node &&
+      /^jsxs?$/.test(node.imported.name)
+    ) {
+      console.log("_IMPORT SPECIFIER", JSON.stringify(node));
+      names.add(node.local.name);
+      return SKIP;
+    }
+    return CONTINUE;
+  });
+  return names;
 };
 
-type Options = { cacheDirectory: string | undefined } | null | undefined;
+const makeImportDeclaration = (
+  path: string,
+  index: number
+): ImportDeclaration => ({
+  source: {
+    type: "Literal",
+    value: path,
+  },
+  specifiers: [
+    {
+      type: "ImportDefaultSpecifier",
+      local: {
+        name: `static_image_${index}`,
+        type: "Identifier",
+      },
+    },
+  ],
+  type: "ImportDeclaration",
+});
+
+const getCachePath = (
+  cache: string,
+  buffer: string | Buffer,
+  extension: string | undefined
+) => {
+  const hash = crypto.createHash("sha256").update(buffer).digest("base64");
+  return `${cache}/${hash}${extension ? `.${extension}` : ""}`;
+};
+
+const mutateProperty = (index: number): Property => ({
+  type: "Property",
+  key: {
+    type: "Identifier",
+    name: "src",
+  },
+  value: {
+    type: "Identifier",
+    name: `static_image_${index}`,
+  },
+  kind: "init",
+  method: false,
+  shorthand: false,
+  computed: false,
+});
+
+type Options =
+  | {
+      cacheDirectory: string | undefined;
+      fetcher: (
+        input: RequestInfo,
+        init?: RequestInit | undefined
+      ) => Promise<Response>;
+    }
+  | null
+  | undefined;
 
 const recmaStaticImages: Plugin<
   [(Options | undefined | void)?],
   Program,
   Program
 > = function (options) {
-  const { cacheDirectory } = options ?? {};
-  if (cacheDirectory === undefined || cacheDirectory === null){
+  console.log("activated plugin");
+  const { cacheDirectory, fetcher = nodeFetch } = options ?? {};
+
+  if (cacheDirectory === undefined || cacheDirectory === null) {
     throw new Error(`Required option 'cacheDirectory' not provided`);
   }
-  const resolvedCacheDirectory = path.resolve(cacheDirectory);
-  console.log("__RESOLVED_CACHE_DIR", resolvedCacheDirectory);
-  console.log("activated plugin");
-  return function (tree, vfile) {
+
+  const cache = nodePath.resolve(cacheDirectory).replace(/\/+$/, "");
+  console.log("CACHE_DIR", cache);
+  if (!fs.existsSync(cache)) fs.mkdirSync(cache);
+
+  return async function (tree, vfile) {
     console.log("In ur transformer");
-    const jsxFactorySpecifiers = new Set<string>();
-    if (!fs.existsSync(resolvedCacheDirectory))
-      fs.mkdirSync(resolvedCacheDirectory);
-    const cache = resolvedCacheDirectory.replace(/\/+$/, "");
-    const imports: (ImportDeclaration | undefined)[] = [];
+    console.log("_VFILE", JSON.stringify(vfile, undefined, "  "));
+    if (!vfile.history[0]) {
+      throw new Error(
+        `Expected vfile history to be non-empty for vfile: ${vfile}`
+      );
+    }
+    const jsxFactorySpecifiers = getJsxFactorySpecifiers(tree);
     let imageCounter = 0;
-    visit(tree, (node) => {
-      if (
-        node.type === "ImportSpecifier" &&
-        "imported" in node &&
-        /^jsxs?$/.test(node.imported.name)
-      ) {
-        console.log("_IMPORT SPECIFIER", JSON.stringify(node));
-        jsxFactorySpecifiers.add(node.local.name);
-        return SKIP;
-      }
-      return CONTINUE;
-    });
-    visit(tree, {
-      enter: function (node) {
-        console.log("_VISITOR_2 NODE");
-        if (
-          node.type === "CallExpression" &&
+    const sourceDirectory = vfile.history[0].replace(/[^/]*$/, "");
+    console.log(sourceDirectory);
+    const imports: (ImportDeclaration | undefined)[] = [];
+    await visitAsync(
+      tree,
+      (node: Node): node is ValidJsxImageConstructor =>
+        (node.type === "CallExpression" &&
           "callee" in node &&
           node.callee.type === "Identifier" &&
           jsxFactorySpecifiers.has(node.callee.name) &&
@@ -173,159 +150,97 @@ const recmaStaticImages: Plugin<
           node.arguments[0].property.type === "Identifier" &&
           node.arguments[0].property.name === "img" &&
           node.arguments[1] &&
-          node.arguments[1].type === "ObjectExpression"
-        ) {
-          console.log("FOUND CANDIDATE", JSON.stringify(node));
-          const [argument0, argument1, ...rest] = node.arguments;
-          const newProperties = argument1.properties.map((property) => {
-            if (
-              property.type !== "Property" ||
-              property.key.type !== "Identifier" ||
-              property.key.name !== "src" ||
-              property.value.type !== "Literal" ||
-              typeof property.value.value !== "string"
-            ) {
-              return property;
-            }
-            imageCounter += 1;
-            if (!vfile.history[0])
-              throw new Error(
-                `Expected vfile history to be non-empty for vfile: ${vfile}`
-              );
-            const directory = vfile.history[0].replace(/[^/]*$/, "");
-            console.log(directory);
-            const source = path.resolve(directory, property.value.value);
+          node.arguments[1].type === "ObjectExpression") ||
+        false,
+      imageSourceVisitor
+    );
 
-            console.log(source);
-            const extension = source.split(".").pop();
-            let url: URL | undefined;
-            try {
-              url = new URL(source);
-            } catch {
-              console.log(source);
-              console.log("_VFILE", JSON.stringify(vfile, undefined, "  "));
-              const buffer = fs.readFileSync(source);
-              const hash = crypto
-                .createHash("sha256")
-                .update(buffer)
-                .digest("base64");
-              const path = `${cache}/${hash}${
-                extension ? `.${extension}` : ""
-              }`;
-              fs.writeFileSync(path, buffer);
-              imports.push({
-                source: {
-                  type: "Literal",
-                  value: path,
-                },
-                specifiers: [
-                  {
-                    type: "ImportDefaultSpecifier",
-                    local: {
-                      name: `static_image_${imageCounter}`,
-                      type: "Identifier",
-                    },
-                  },
-                ],
-                type: "ImportDeclaration",
-              });
-              const returnValue: Property = {
-                type: "Property",
-                key: {
-                  type: "Identifier",
-                  name: "src",
-                },
-                value: {
-                  type: "Identifier",
-                  name: `static_image_${imageCounter}`,
-                },
-                kind: "init",
-                method: false,
-                shorthand: false,
-                computed: false,
-              };
-              return returnValue;
-            }
-            if (url instanceof URL) {
-              const fetcher = makeRetryableFetcher({
-                retries: 5,
-                delay: 3000,
-              });
-              fetcher.call(undefined, url.href).then((response) => {
-                if (!response || !response.body)
-                  throw new Error(
-                    `Missing body in response for resource: ${url}`
-                  );
-                const buffer = response.body.read();
-                const hash = crypto
-                  .createHash("sha256")
-                  .update(buffer)
-                  .digest("base64");
-                const path = `${cache}/${hash}${
-                  extension ? `.${extension}` : ""
-                }`;
-                fs.writeFileSync(path, buffer);
-                imports.push({
-                  source: {
-                    type: "Literal",
-                    value: path,
-                  },
-                  specifiers: [
-                    {
-                      type: "ImportDefaultSpecifier",
-                      local: {
-                        name: `static_image_${imageCounter}`,
-                        type: "Identifier",
-                      },
-                    },
-                  ],
-                  type: "ImportDeclaration",
-                });
-                const returnValue: Property = {
-                  type: "Property",
-                  key: {
-                    type: "Identifier",
-                    name: "src",
-                  },
-                  value: {
-                    type: "Identifier",
-                    name: `static_image_${imageCounter}`,
-                  },
-                  kind: "init",
-                  method: false,
-                  shorthand: false,
-                  computed: false,
-                };
-                return returnValue;
-              });
-            }
-            return property;
-          });
-          console.log(
-            "_NEWPROPS",
-            JSON.stringify(newProperties, undefined, "  ")
-          );
-          node.arguments = [
-              argument0,
-              { ...argument1, properties: newProperties },
-              ...rest,
-            ];
+    await visitAsync(
+      tree,
+      (node): node is Program => node.type === "Program",
+      async function (node) {
+        console.log(JSON.stringify(imports));
+        for (const declaration of imports) {
+          if (declaration) node.body.unshift(declaration);
         }
-        return CONTINUE;
-      },
-      leave: function (node) {
-        if (node.type === "Program" && "body" in node) {
-          console.log(JSON.stringify(imports))
-          for (const imported of imports) {
-            if (imported) node.body.unshift(imported);
-          }
-          return EXIT;
+      }
+    );
+
+    return;
+
+    async function imageSourceVisitor(node: ValidJsxImageConstructor) {
+      console.log("_VISITOR_2 NODE");
+      console.log("FOUND CANDIDATE", JSON.stringify(node));
+      const [argument0, argument1, ...rest] = node.arguments;
+      const newProperties: (Property | SpreadElement)[] = [];
+      for (const property of argument1.properties) {
+        if (
+          property.type !== "Property" ||
+          property.key.type !== "Identifier" ||
+          property.key.name !== "src" ||
+          property.value.type !== "Literal" ||
+          typeof property.value.value !== "string"
+        ) {
+          newProperties.push(property);
+          continue;
         }
-        return SKIP;
-      },
-    });
-    return tree;
+
+        const value = property.value.value;
+        const extension = value.split(".").pop();
+        let url: URL | undefined;
+        let buffer: string | Buffer | undefined;
+        imageCounter += 1;
+
+        try {
+          url = new URL(value);
+          console.log("REMOTE URL ENCOUNTERED:", url);
+        } catch {
+          const source = nodePath.resolve(sourceDirectory, value);
+          console.log("LOCAL FILE ENCOUNTERED:", source);
+          buffer = fs.readFileSync(source);
+        }
+
+        if (url instanceof URL) {
+          const response = await fetcher.call(undefined, url.href);
+          if (!response || !response.body)
+            throw new Error(`Missing body in response for resource: ${url}`);
+          buffer = response.body.read();
+        }
+
+        if (!buffer) {
+          newProperties.push(property);
+          continue;
+        }
+
+        const path = getCachePath(cache, buffer, extension);
+        fs.writeFileSync(path, buffer);
+        const declaration = makeImportDeclaration(path, imageCounter);
+        imports.push(declaration);
+        newProperties.push(mutateProperty(imageCounter));
+      }
+
+      console.log("_NEWPROPS", JSON.stringify(newProperties, undefined, "  "));
+
+      node.arguments = [
+        argument0,
+        { ...argument1, properties: newProperties },
+        ...rest,
+      ];
+    }
   };
 };
 
 export default recmaStaticImages;
+
+async function visitAsync<T extends Node>(
+  tree: Program,
+  test: (node: Node) => node is T,
+  asyncVisitor: (node: T) => Promise<ReturnType<Visitor>>
+) {
+  const matches: T[] = [];
+  visit(tree, (node) => {
+    if (test(node)) matches.push(node);
+  });
+  const promises = matches.map((match) => asyncVisitor(match));
+  await Promise.all(promises);
+}
