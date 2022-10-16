@@ -24,70 +24,6 @@ import type {
   ObjectExpression,
 } from "estree";
 
-type ValidJsxImageConstructor = SimpleCallExpression & {
-  callee: Identifier;
-  arguments: [
-    component: MemberExpression & { property: Identifier & { name: "img" } },
-    children: ObjectExpression,
-    ...rest: unknown[]
-  ];
-};
-/**
- * Find the local identifier assigned to the imported JSX factory(s)
- * @example: `import theFactory from 'jsx'
- */
-const getJsxFactorySpecifiers = (tree: Program) => {
-  const names = new Set<string>();
-  visit(tree, (node) => {
-    if (
-      node.type === "ImportSpecifier" &&
-      "imported" in node &&
-      /^jsxs?$/.test(node.imported.name)
-    ) {
-      names.add(node.local.name);
-      return SKIP;
-    }
-    return CONTINUE;
-  });
-  return names;
-};
-
-const generateImportDeclaration = (
-  path: string,
-  index: number
-): ImportDeclaration => ({
-  source: {
-    type: "Literal",
-    value: path,
-  },
-  specifiers: [
-    {
-      type: "ImportDefaultSpecifier",
-      local: {
-        name: `static_image_${index}`,
-        type: "Identifier",
-      },
-    },
-  ],
-  type: "ImportDeclaration",
-});
-
-const updateSourcePropertyNode = (index: number): Property => ({
-  type: "Property",
-  key: {
-    type: "Identifier",
-    name: "src",
-  },
-  value: {
-    type: "Identifier",
-    name: `static_image_${index}`,
-  },
-  kind: "init",
-  method: false,
-  shorthand: false,
-  computed: false,
-});
-
 export type Options =
   | {
       cacheDirectory: string | undefined;
@@ -122,6 +58,14 @@ const recmaStaticImages: Plugin<
     const jsxFactorySpecifiers = getJsxFactorySpecifiers(tree);
     const sourceDirectory = vfile.history[0].replace(/[^/]*$/, "");
     const imports: (ImportDeclaration | undefined)[] = [];
+    type ValidJsxImageConstructor = SimpleCallExpression & {
+      callee: Identifier;
+      arguments: [
+        component: MemberExpression & { property: Identifier & { name: "img" } },
+        children: ObjectExpression,
+        ...rest: unknown[]
+      ];
+    };
 
     await visitAsync(
       tree,
@@ -155,9 +99,9 @@ const recmaStaticImages: Plugin<
 
           imageCounter += 1;
           const value = property.value.value;
-          const extension = value.split(".").pop();
+          const extension = getExtension(value);
           let url: URL | undefined;
-          let buffer: string | Buffer | undefined;
+          let buffer: Buffer | string | undefined;
           let path: string | undefined;
 
           try {
@@ -167,35 +111,24 @@ const recmaStaticImages: Plugin<
             // handle relative paths
             const source = nodePath.resolve(sourceDirectory, value);
             buffer = fs.readFileSync(source);
-
-            const hash = crypto
-              .createHash("sha256")
-              .update(buffer)
-              .digest("base64");
-            path = `${cache}/${hash}${extension ? `.${extension}` : ""}`;
+            path = `${cache}/${sha256(buffer)}${extension}`;
           }
 
           if (url instanceof URL) {
             // handle absolute URLs
-            const buffer = await _fetch(url.href).then((r) => {
+            buffer = await _fetch(url.href).then((r) => {
               if (!r?.body) throw new Error(`Failed to fetch ${url?.href}`);
               return r.body.read();
             });
-
-            const hash = crypto
-              .createHash("sha256")
-              .update(buffer)
-              .digest("base64");
-            path = `${cache}/${hash}${extension ? `.${extension}` : ""}`;
+            path = `${cache}/${sha256(url.href)}${extension}`;
           }
 
           if (!path) throw new Error(`Missing path for image: ${value}`);
-          if (!buffer) throw new Error(`Missing buffer for image: ${value}`);
-
+          assertBuffer(buffer);
           fs.writeFileSync(path, buffer);
           const declaration = generateImportDeclaration(path, imageCounter);
           imports.push(declaration);
-          newProperties.push(updateSourcePropertyNode(imageCounter));
+          newProperties.push(generateSrcPropertyNode(imageCounter));
         }
 
         node.arguments = [
@@ -219,6 +152,84 @@ const recmaStaticImages: Plugin<
 };
 
 export default recmaStaticImages;
+
+/**
+ * Find the local identifier assigned to the imported JSX factory(s)
+ * @example: `import theFactory from 'jsx'
+ */
+ function getJsxFactorySpecifiers(tree: Program) {
+  const names = new Set<string>();
+  visit(tree, (node) => {
+    if (
+      node.type === "ImportSpecifier" &&
+      "imported" in node &&
+      /^jsxs?$/.test(node.imported.name)
+    ) {
+      names.add(node.local.name);
+      return SKIP;
+    }
+    return CONTINUE;
+  });
+  return names;
+}
+
+function sha256(data: crypto.BinaryLike) {
+  crypto.createHash("sha256").update(data).digest("base64");
+}
+
+function getExtension(path: string) {
+  const split = path.split(".");
+  if (split.length === 1) return "";
+  return `.${split.at(-1)}`;
+}
+
+function assertBuffer(
+  buffer: Buffer | string | undefined
+): asserts buffer is Buffer {
+  if (buffer instanceof Buffer) return;
+  throw new Error(`Expected buffer, got ${buffer}`);
+}
+
+function generateImportDeclaration(
+  path: string,
+  index: number
+): ImportDeclaration {
+  return {
+    source: {
+      type: "Literal",
+      value: path,
+    },
+    specifiers: [
+      {
+        type: "ImportDefaultSpecifier",
+        local: {
+          name: `static_image_${index}`,
+          type: "Identifier",
+        },
+      },
+    ],
+    type: "ImportDeclaration",
+  };
+}
+
+// eslint-disable-next-line unicorn/prevent-abbreviations
+function generateSrcPropertyNode(index: number): Property {
+  return {
+    type: "Property",
+    key: {
+      type: "Identifier",
+      name: "src",
+    },
+    value: {
+      type: "Identifier",
+      name: `static_image_${index}`,
+    },
+    kind: "init",
+    method: false,
+    shorthand: false,
+    computed: false,
+  };
+}
 
 async function visitAsync<T extends Node>(
   tree: Program,
