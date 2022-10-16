@@ -110,7 +110,7 @@ function getJsxFactorySpecifiers(tree) {
     return names;
 }
 function sha256(data) {
-    crypto.createHash("sha256").update(data).digest("base64");
+    return crypto.createHash("sha256").update(data).digest("base64");
 }
 function getExtension(path) {
     const split = path.split(".");
@@ -167,4 +167,5 @@ async function visitAsync(tree, test, asyncVisitor) {
     });
     const promises = matches.map((match) => asyncVisitor(match));
     await Promise.all(promises);
+    return;
 }

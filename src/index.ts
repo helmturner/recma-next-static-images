@@ -174,7 +174,7 @@ export default recmaStaticImages;
 }
 
 function sha256(data: crypto.BinaryLike) {
-  crypto.createHash("sha256").update(data).digest("base64");
+  return crypto.createHash("sha256").update(data).digest("base64");
 }
 
 function getExtension(path: string) {
@@ -242,4 +242,5 @@ async function visitAsync<T extends Node>(
   });
   const promises = matches.map((match) => asyncVisitor(match));
   await Promise.all(promises);
+  return;
 }
