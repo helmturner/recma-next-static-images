@@ -44,7 +44,6 @@ const getJsxFactorySpecifiers = (tree: Program) => {
       "imported" in node &&
       /^jsxs?$/.test(node.imported.name)
     ) {
-      console.log("_IMPORT SPECIFIER", JSON.stringify(node));
       names.add(node.local.name);
       return SKIP;
     }
@@ -53,7 +52,7 @@ const getJsxFactorySpecifiers = (tree: Program) => {
   return names;
 };
 
-const makeImportDeclaration = (
+const generateImportDeclaration = (
   path: string,
   index: number
 ): ImportDeclaration => ({
@@ -73,16 +72,7 @@ const makeImportDeclaration = (
   type: "ImportDeclaration",
 });
 
-const getCachePath = (
-  cache: string,
-  buffer: string | Buffer,
-  extension: string | undefined
-) => {
-  const hash = crypto.createHash("sha256").update(buffer).digest("base64");
-  return `${cache}/${hash}${extension ? `.${extension}` : ""}`;
-};
-
-const mutateProperty = (index: number): Property => ({
+const updateSourcePropertyNode = (index: number): Property => ({
   type: "Property",
   key: {
     type: "Identifier",
@@ -114,34 +104,25 @@ const recmaStaticImages: Plugin<
   Program,
   Program
 > = function (options) {
-  console.log("activated plugin");
   /*
    * Extract config properties from the options object or, if nullish, an empty object.
    * If a propperty is undefined on the right, it may be set to its default value on the left.
    */
-  const { cacheDirectory, fetcher = nodeFetch } = options ?? {};
-
-  if (cacheDirectory === undefined || cacheDirectory === null) {
-    throw new Error(`Required option 'cacheDirectory' not provided`);
-  }
+  const { cacheDirectory, fetcher: _fetch = nodeFetch } = options ?? {};
+  if (!cacheDirectory) throw new Error("cacheDirectory is required");
 
   const cache = nodePath.resolve(cacheDirectory).replace(/\/+$/, "");
-  console.log("CACHE_DIR", cache);
   if (!fs.existsSync(cache)) fs.mkdirSync(cache);
 
   return async function (tree, vfile) {
-    console.log("In ur transformer");
-    console.log("_VFILE", JSON.stringify(vfile, undefined, "  "));
-    if (!vfile.history[0]) {
-      throw new Error(
-        `Expected vfile history to be non-empty for vfile: ${vfile}`
-      );
-    }
-    const jsxFactorySpecifiers = getJsxFactorySpecifiers(tree);
+    if (!vfile.history[0])
+      throw new Error(`File history is empty for ${vfile}`);
+
     let imageCounter = 0;
+    const jsxFactorySpecifiers = getJsxFactorySpecifiers(tree);
     const sourceDirectory = vfile.history[0].replace(/[^/]*$/, "");
-    console.log(sourceDirectory);
     const imports: (ImportDeclaration | undefined)[] = [];
+
     await visitAsync(
       tree,
       (node: Node): node is ValidJsxImageConstructor =>
@@ -156,83 +137,84 @@ const recmaStaticImages: Plugin<
           node.arguments[1] &&
           node.arguments[1].type === "ObjectExpression") ||
         false,
-      imageSourceVisitor
+      async function (node: ValidJsxImageConstructor) {
+        const [argument0, argument1, ...rest] = node.arguments;
+        const newProperties: (Property | SpreadElement)[] = [];
+
+        for (const property of argument1.properties) {
+          if (
+            property.type !== "Property" ||
+            property.key.type !== "Identifier" ||
+            property.key.name !== "src" ||
+            property.value.type !== "Literal" ||
+            typeof property.value.value !== "string"
+          ) {
+            newProperties.push(property);
+            continue;
+          }
+
+          imageCounter += 1;
+          const value = property.value.value;
+          const extension = value.split(".").pop();
+          let url: URL | undefined;
+          let buffer: string | Buffer | undefined;
+          let path: string | undefined;
+
+          try {
+            // will fail for relative paths
+            url = new URL(value);
+          } catch {
+            // handle relative paths
+            const source = nodePath.resolve(sourceDirectory, value);
+            buffer = fs.readFileSync(source);
+
+            const hash = crypto
+              .createHash("sha256")
+              .update(buffer)
+              .digest("base64");
+            path = `${cache}/${hash}${extension ? `.${extension}` : ""}`;
+          }
+
+          if (url instanceof URL) {
+            // handle absolute URLs
+            const buffer = await _fetch(url.href).then((r) => {
+              if (!r?.body) throw new Error(`Failed to fetch ${url?.href}`);
+              return r.body.read();
+            });
+
+            const hash = crypto
+              .createHash("sha256")
+              .update(buffer)
+              .digest("base64");
+            path = `${cache}/${hash}${extension ? `.${extension}` : ""}`;
+          }
+
+          if (!path) throw new Error(`Missing path for image: ${value}`);
+          if (!buffer) throw new Error(`Missing buffer for image: ${value}`);
+
+          fs.writeFileSync(path, buffer);
+          const declaration = generateImportDeclaration(path, imageCounter);
+          imports.push(declaration);
+          newProperties.push(updateSourcePropertyNode(imageCounter));
+        }
+
+        node.arguments = [
+          argument0,
+          { ...argument1, properties: newProperties },
+          ...rest,
+        ];
+      }
     );
 
     await visitAsync(
       tree,
       (node): node is Program => node.type === "Program",
       async function (node) {
-        console.log(JSON.stringify(imports));
         for (const declaration of imports) {
           if (declaration) node.body.unshift(declaration);
         }
       }
     );
-
-    return;
-
-    async function imageSourceVisitor(node: ValidJsxImageConstructor) {
-      console.log("_VISITOR_2 NODE");
-      console.log("FOUND CANDIDATE", JSON.stringify(node));
-      const [argument0, argument1, ...rest] = node.arguments;
-      const newProperties: (Property | SpreadElement)[] = [];
-      for (const property of argument1.properties) {
-        if (
-          property.type !== "Property" ||
-          property.key.type !== "Identifier" ||
-          property.key.name !== "src" ||
-          property.value.type !== "Literal" ||
-          typeof property.value.value !== "string"
-        ) {
-          newProperties.push(property);
-          continue;
-        }
-
-        const value = property.value.value;
-        const extension = value.split(".").pop();
-        let url: URL | undefined;
-        let buffer: string | Buffer | undefined;
-        imageCounter += 1;
-
-        try {
-          url = new URL(value);
-          console.log("REMOTE URL ENCOUNTERED:", url);
-        } catch {
-          const source = nodePath.resolve(sourceDirectory, value);
-          console.log("LOCAL FILE ENCOUNTERED:", source);
-          buffer = fs.readFileSync(source);
-        }
-
-        if (url instanceof URL) {
-          console.log("FETCHING REMOTE IMAGE");
-          const response = await fetcher.call(undefined, url.href);
-          if (!response || !response.body)
-            throw new Error(`Missing body in response for resource: ${url}`);
-          buffer = response.body.read();
-        }
-
-        if (!buffer) {
-          console.log("NO BUFFER");
-          newProperties.push(property);
-          continue;
-        }
-
-        const path = getCachePath(cache, buffer, extension);
-        fs.writeFileSync(path, buffer);
-        const declaration = makeImportDeclaration(path, imageCounter);
-        imports.push(declaration);
-        newProperties.push(mutateProperty(imageCounter));
-      }
-
-      console.log("_NEWPROPS", JSON.stringify(newProperties, undefined, "  "));
-
-      node.arguments = [
-        argument0,
-        { ...argument1, properties: newProperties },
-        ...rest,
-      ];
-    }
   };
 };
 
