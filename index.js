@@ -59,6 +59,10 @@ const mutateProperty = (index) => ({
 });
 const recmaStaticImages = function (options) {
     console.log("activated plugin");
+    /*
+     * Extract config properties from the options object or, if nullish, an empty object.
+     * If a propperty is undefined on the right, it may be set to its default value on the left.
+     */
     const { cacheDirectory, fetcher = nodeFetch } = options ?? {};
     if (cacheDirectory === undefined || cacheDirectory === null) {
         throw new Error(`Required option 'cacheDirectory' not provided`);
@@ -126,12 +130,14 @@ const recmaStaticImages = function (options) {
                     buffer = fs.readFileSync(source);
                 }
                 if (url instanceof URL) {
+                    console.log("FETCHING REMOTE IMAGE");
                     const response = await fetcher.call(undefined, url.href);
                     if (!response || !response.body)
                         throw new Error(`Missing body in response for resource: ${url}`);
                     buffer = response.body.read();
                 }
                 if (!buffer) {
+                    console.log("NO BUFFER");
                     newProperties.push(property);
                     continue;
                 }

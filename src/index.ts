@@ -115,6 +115,10 @@ const recmaStaticImages: Plugin<
   Program
 > = function (options) {
   console.log("activated plugin");
+  /*
+   * Extract config properties from the options object or, if nullish, an empty object.
+   * If a propperty is undefined on the right, it may be set to its default value on the left.
+   */
   const { cacheDirectory, fetcher = nodeFetch } = options ?? {};
 
   if (cacheDirectory === undefined || cacheDirectory === null) {
@@ -201,6 +205,7 @@ const recmaStaticImages: Plugin<
         }
 
         if (url instanceof URL) {
+          console.log("FETCHING REMOTE IMAGE");
           const response = await fetcher.call(undefined, url.href);
           if (!response || !response.body)
             throw new Error(`Missing body in response for resource: ${url}`);
@@ -208,6 +213,7 @@ const recmaStaticImages: Plugin<
         }
 
         if (!buffer) {
+          console.log("NO BUFFER");
           newProperties.push(property);
           continue;
         }
