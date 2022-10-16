@@ -1,7 +1,7 @@
 import type { Plugin } from "unified";
 import type { Program } from "estree-jsx";
 import { Response, type RequestInfo, type RequestInit } from "node-fetch";
-declare type Options = {
+export declare type Options = {
     cacheDirectory: string | undefined;
     fetcher: (input: RequestInfo, init?: RequestInit | undefined) => Promise<Response>;
 } | null | undefined;

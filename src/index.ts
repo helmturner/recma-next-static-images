@@ -98,7 +98,7 @@ const mutateProperty = (index: number): Property => ({
   computed: false,
 });
 
-type Options =
+export type Options =
   | {
       cacheDirectory: string | undefined;
       fetcher: (
