@@ -125,7 +125,10 @@ const recmaStaticImages: Plugin<
 
           if (!path) throw new Error(`Missing path for image: ${value}`);
           assertBuffer(buffer);
-          fs.writeFileSync(path, buffer);
+          fs.writeFile(path, buffer, (error) => {
+            if (error) throw error;
+            console.log(`Wrote ${path}`);
+          });
           const declaration = generateImportDeclaration(path, imageCounter);
           imports.push(declaration);
           newProperties.push(generateSrcPropertyNode(imageCounter));
