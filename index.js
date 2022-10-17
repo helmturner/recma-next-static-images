@@ -113,8 +113,9 @@ function sha256(data) {
     return crypto.createHash("sha256").update(data).digest("base64");
 }
 function getExtension(path) {
-    const split = path.split(".");
-    if (split.length === 1)
+    const name = path.split('/').at(-1);
+    const split = name?.split(".") ?? [];
+    if (split.length < 2)
         return "";
     return `.${split.at(-1)}`;
 }

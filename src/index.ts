@@ -178,8 +178,9 @@ function sha256(data: crypto.BinaryLike) {
 }
 
 function getExtension(path: string) {
-  const split = path.split(".");
-  if (split.length === 1) return "";
+  const name = path.split('/').at(-1);
+  const split = name?.split(".") ?? [];
+  if (split.length < 2) return "";
   return `.${split.at(-1)}`;
 }
 
