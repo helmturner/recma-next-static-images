@@ -1,166 +1,129 @@
 /* eslint-disable unicorn/numeric-separators-style */
-import type { Plugin } from "unified";
-import type {
-  Program,
-  ImportDeclaration,
-  Property,
-  SpreadElement,
-} from "estree-jsx";
+import node_fs from "node:fs";
+import node_path from "node:path";
+import node_fetch from "node-fetch";
+import node_crypto from "node:crypto";
+import { visit, SKIP, CONTINUE } from "estree-util-visit";
 
-import { visit, SKIP, CONTINUE, type Node, Visitor } from "estree-util-visit";
-import fs from "node:fs";
-import nodePath from "node:path";
-import { URL } from "node:url";
-import crypto from "node:crypto";
-import nodeFetch, {
-  Response,
-  type RequestInfo,
-  type RequestInit,
-} from "node-fetch";
-import type {
-  SimpleCallExpression,
-  Identifier,
-  MemberExpression,
-  ObjectExpression,
-} from "estree";
+import type * as Node from "node-fetch";
+import type * as Unified from "unified";
+import type * as ESTree from "estree-jsx";
+import type * as Util from "estree-util-visit";
 
 export type Options =
   | {
       cacheDirectory: string | undefined;
-      fetcher: (
-        input: RequestInfo,
-        init?: RequestInit | undefined
-      ) => Promise<Response>;
+      customFetch: (
+        input: Node.RequestInfo,
+        init?: Node.RequestInit | undefined
+      ) => Promise<Node.Response>;
     }
   | null
   | undefined;
 
-const recmaStaticImages: Plugin<
+const recmaStaticImages: Unified.Plugin<
   [(Options | undefined | void)?],
-  Program,
-  Program
+  ESTree.Program,
+  ESTree.Program
 > = function (options) {
-  /*
-   * Extract config properties from the options object or, if nullish, an empty object.
-   * If a propperty is undefined on the right, it may be set to its default value on the left.
-   */
-  const { cacheDirectory, fetcher: _fetch = nodeFetch } = options ?? {};
+  // deconstruct options (if provided) and set defaults where applicable
+  const { cacheDirectory, customFetch: _fetch = node_fetch } = options ?? {};
   if (!cacheDirectory) throw new Error("cacheDirectory is required");
 
-  const cache = nodePath.resolve(cacheDirectory).replace(/\/+$/, "");
-  if (!fs.existsSync(cache)) fs.mkdirSync(cache);
+  // resolve the cache directory and remove trailing slashes; make sure it exists
+  const cache = node_path.resolve(cacheDirectory).replace(/\/+$/, "");
+  if (!node_fs.existsSync(cache)) node_fs.mkdirSync(cache);
 
   return async function (tree, vfile) {
     if (!vfile.history[0])
       throw new Error(`File history is empty for ${vfile}`);
 
     let imageCounter = 0;
-    const jsxFactorySpecifiers = getJsxFactorySpecifiers(tree);
     const sourceDirectory = vfile.history[0].replace(/[^/]*$/, "");
-    const imports: (ImportDeclaration | undefined)[] = [];
-    type ValidJsxImageConstructor = SimpleCallExpression & {
-      callee: Identifier;
-      arguments: [
-        component: MemberExpression & { property: Identifier & { name: "img" } },
-        children: ObjectExpression,
-        ...rest: unknown[]
-      ];
-    };
+    const imports: (ESTree.ImportDeclaration | undefined)[] = [];
+    const isImageJsxFactory = buildImageJsxFactoryTest(tree);
 
-    await visitAsync(
-      tree,
-      (node: Node): node is ValidJsxImageConstructor =>
-        (node.type === "CallExpression" &&
-          "callee" in node &&
-          node.callee.type === "Identifier" &&
-          jsxFactorySpecifiers.has(node.callee.name) &&
-          node.arguments[0] &&
-          node.arguments[0].type === "MemberExpression" &&
-          node.arguments[0].property.type === "Identifier" &&
-          node.arguments[0].property.name === "img" &&
-          node.arguments[1] &&
-          node.arguments[1].type === "ObjectExpression") ||
-        false,
-      async function (node: ValidJsxImageConstructor) {
-        const [argument0, argument1, ...rest] = node.arguments;
-        const newProperties: (Property | SpreadElement)[] = [];
+    await visitAsync(tree, isImageJsxFactory, async function (node) {
+      const [argument0, argument1, ...rest] = node.arguments;
+      const newProperties: (ESTree.Property | ESTree.SpreadElement)[] = [];
 
-        for (const property of argument1.properties) {
-          if (
-            property.type !== "Property" ||
-            property.key.type !== "Identifier" ||
-            property.key.name !== "src" ||
-            property.value.type !== "Literal" ||
-            typeof property.value.value !== "string"
-          ) {
-            newProperties.push(property);
-            continue;
-          }
+      for (const property of argument1.properties) {
+        if (
+          property.type !== "Property" ||
+          property.key.type !== "Identifier" ||
+          property.key.name !== "src" ||
+          property.value.type !== "Literal" ||
+          typeof property.value.value !== "string"
+        ) {
+          newProperties.push(property);
+          continue;
+        }
 
-          imageCounter += 1;
-          const value = property.value.value;
-          const extension = getExtension(value);
-          let url: URL | undefined;
-          let buffer: Buffer | string | undefined;
-          let path: string | undefined;
+        imageCounter += 1;
+        const value = property.value.value;
+        const extension = getExtension(value);
+        let url: URL | undefined;
+        let buffer: Buffer | undefined;
 
-          try {
-            // will fail for relative paths
-            url = new URL(value);
-          } catch {
-            // handle relative paths
-            const source = nodePath.resolve(sourceDirectory, value);
-            buffer = fs.readFileSync(source);
-            path = `${cache}/${sha256(buffer)}${extension}`;
-          }
+        try {
+          // will fail for relative paths
+          url = new URL(value);
+        } catch {
+          // handle relative paths
+          const source = node_path.resolve(sourceDirectory, value);
+          buffer = node_fs.readFileSync(source);
+        }
 
-          if (url instanceof URL) {
-            // handle absolute URLs
-            buffer = await _fetch(url.href).then((r) => {
-              if (!r?.body) throw new Error(`Failed to fetch ${url?.href}`);
-              return r.body.read();
-            });
-            path = `${cache}/${sha256(url.href)}${extension}`;
-          }
-
-          if (!path) throw new Error(`Missing path for image: ${value}`);
-          assertBuffer(buffer);
-          fs.writeFile(path, buffer, (error) => {
-            if (error) throw error;
-            console.log(`Wrote ${path}`);
+        if (url) {
+          const chunks = await _fetch(url.href).then((r) => {
+            if (r.status !== 200)
+              throw new Error(`Failed to fetch ${url?.href}`);
+            return r.arrayBuffer();
           });
-          const declaration = generateImportDeclaration(path, imageCounter);
-          imports.push(declaration);
-          newProperties.push(generateSrcPropertyNode(imageCounter));
+          buffer = Buffer.from(chunks);
         }
 
-        node.arguments = [
-          argument0,
-          { ...argument1, properties: newProperties },
-          ...rest,
-        ];
-      }
-    );
+        if (!buffer)
+          throw new Error(`Failed to read the file from ${url?.href}`);
 
-    await visitAsync(
-      tree,
-      (node): node is Program => node.type === "Program",
-      async function (node) {
-        for (const declaration of imports) {
-          if (declaration) node.body.unshift(declaration);
-        }
+        const path = `${cache}/${sha256(buffer)}${extension}`;
+        const declaration = generateImportDeclaration(path, imageCounter);
+
+        imports.push(declaration);
+        newProperties.push(buildSrcPropertyNode(imageCounter));
+        node_fs.writeFile(path, buffer, (error) => {
+          if (error) throw error;
+        });
       }
-    );
+
+      node.arguments = [
+        argument0,
+        { ...argument1, properties: newProperties },
+        ...rest,
+      ];
+    });
+    prependImportsToTree(tree, imports);
   };
 };
 
 export default recmaStaticImages;
 
-/**
- * Find the local identifier assigned to the imported JSX factory(s)
- * @example: `import theFactory from 'jsx'
- */
- function getJsxFactorySpecifiers(tree: Program) {
+function prependImportsToTree(
+  tree: ESTree.Program,
+  imports: (ESTree.ImportDeclaration | undefined)[]
+) {
+  return visitAsync(
+    tree,
+    (node): node is ESTree.Program => node.type === "Program",
+    async function (node) {
+      for (const declaration of imports) {
+        if (declaration) node.body.unshift(declaration);
+      }
+    }
+  );
+}
+
+function buildImageJsxFactoryTest(tree: ESTree.Program) {
   const names = new Set<string>();
   visit(tree, (node) => {
     if (
@@ -173,31 +136,44 @@ export default recmaStaticImages;
     }
     return CONTINUE;
   });
-  return names;
+  return function (node: Util.Node): node is ESTree.SimpleCallExpression & {
+    callee: ESTree.Identifier;
+    arguments: [
+      component: ESTree.MemberExpression & {
+        property: ESTree.Identifier & { name: "img" };
+      },
+      children: ESTree.ObjectExpression,
+      ...rest: (ESTree.Expression | ESTree.SpreadElement)[]
+    ];
+  } {
+    return (
+      node.type === "CallExpression" &&
+      "callee" in node &&
+      node.callee.type === "Identifier" &&
+      names.has(node.callee.name) &&
+      node.arguments[0]?.type === "MemberExpression" &&
+      node.arguments[0].property.type === "Identifier" &&
+      node.arguments[0].property.name === "img" &&
+      node.arguments[1]?.type === "ObjectExpression"
+    );
+  };
 }
 
-function sha256(data: crypto.BinaryLike) {
-  return crypto.createHash("sha256").update(data).digest("base64");
+function sha256(data: node_crypto.BinaryLike) {
+  return node_crypto.createHash("sha256").update(data).digest("base64");
 }
 
 function getExtension(path: string) {
-  const name = path.split('/').at(-1);
+  const name = path.split("/").at(-1);
   const split = name?.split(".") ?? [];
   if (split.length < 2) return "";
   return `.${split.at(-1)}`;
 }
 
-function assertBuffer(
-  buffer: Buffer | string | undefined
-): asserts buffer is Buffer {
-  if (buffer instanceof Buffer) return;
-  throw new Error(`Expected buffer, got ${buffer}`);
-}
-
 function generateImportDeclaration(
   path: string,
   index: number
-): ImportDeclaration {
+): ESTree.ImportDeclaration {
   return {
     source: {
       type: "Literal",
@@ -217,7 +193,7 @@ function generateImportDeclaration(
 }
 
 // eslint-disable-next-line unicorn/prevent-abbreviations
-function generateSrcPropertyNode(index: number): Property {
+function buildSrcPropertyNode(index: number): ESTree.Property {
   return {
     type: "Property",
     key: {
@@ -235,10 +211,10 @@ function generateSrcPropertyNode(index: number): Property {
   };
 }
 
-async function visitAsync<T extends Node>(
-  tree: Program,
-  test: (node: Node) => node is T,
-  asyncVisitor: (node: T) => Promise<ReturnType<Visitor>>
+async function visitAsync<T extends Util.Node>(
+  tree: ESTree.Program,
+  test: (node: Util.Node) => node is T,
+  asyncVisitor: (node: T) => Promise<ReturnType<Util.Visitor>>
 ) {
   const matches: T[] = [];
   visit(tree, (node) => {
