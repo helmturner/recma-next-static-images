@@ -210,7 +210,10 @@ function buildSrcPropertyNode(index: number): ESTree.Property {
     computed: false,
   };
 }
-
+/**
+ * No async visitor is provided, so we must make our own.
+ * @see https://github.com/syntax-tree/unist-util-visit-parents/issues/8
+ */
 async function visitAsync<T extends Util.Node>(
   tree: ESTree.Program,
   test: (node: Util.Node) => node is T,
