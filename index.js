@@ -34,7 +34,7 @@ const recmaStaticImages = function (options) {
                 }
                 imageCounter += 1;
                 const value = property.value.value;
-                const extension = getExtension(value);
+                const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
                 let url;
                 let buffer;
                 try {
@@ -107,13 +107,6 @@ function buildImageJsxFactoryTest(tree) {
 }
 function sha256(data) {
     return node_crypto.createHash("sha256").update(data).digest("base64");
-}
-function getExtension(path) {
-    const name = path.split("/").at(-1);
-    const split = name?.split(".") ?? [];
-    if (split.length < 2)
-        return "";
-    return `.${split.at(-1)}`;
 }
 function generateImportDeclaration(path, index) {
     return {

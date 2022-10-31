@@ -61,7 +61,7 @@ const recmaStaticImages: Unified.Plugin<
 
         imageCounter += 1;
         const value = property.value.value;
-        const extension = getExtension(value);
+        const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
         let url: URL | undefined;
         let buffer: Buffer | undefined;
 
@@ -161,13 +161,6 @@ function buildImageJsxFactoryTest(tree: ESTree.Program) {
 
 function sha256(data: node_crypto.BinaryLike) {
   return node_crypto.createHash("sha256").update(data).digest("base64");
-}
-
-function getExtension(path: string) {
-  const name = path.split("/").at(-1);
-  const split = name?.split(".") ?? [];
-  if (split.length < 2) return "";
-  return `.${split.at(-1)}`;
 }
 
 function generateImportDeclaration(
