@@ -61,7 +61,6 @@ const recmaStaticImages: Unified.Plugin<
 
         imageCounter += 1;
         const value = property.value.value;
-        const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
         let url: URL | undefined;
         let buffer: Buffer | undefined;
 
@@ -86,6 +85,7 @@ const recmaStaticImages: Unified.Plugin<
         if (!buffer)
           throw new Error(`Failed to read the file from ${url?.href}`);
 
+        const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
         const path = `${cache}/${sha256(buffer)}${extension}`;
         const declaration = generateImportDeclaration(path, imageCounter);
 

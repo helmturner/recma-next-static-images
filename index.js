@@ -34,7 +34,6 @@ const recmaStaticImages = function (options) {
                 }
                 imageCounter += 1;
                 const value = property.value.value;
-                const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
                 let url;
                 let buffer;
                 try {
@@ -56,6 +55,7 @@ const recmaStaticImages = function (options) {
                 }
                 if (!buffer)
                     throw new Error(`Failed to read the file from ${url?.href}`);
+                const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
                 const path = `${cache}/${sha256(buffer)}${extension}`;
                 const declaration = generateImportDeclaration(path, imageCounter);
                 imports.push(declaration);
@@ -144,6 +144,10 @@ function buildSrcPropertyNode(index) {
         computed: false,
     };
 }
+/**
+ * No async visitor is provided, so we must make our own.
+ * @see https://github.com/syntax-tree/unist-util-visit-parents/issues/8
+ */
 async function visitAsync(tree, test, asyncVisitor) {
     const matches = [];
     visit(tree, (node) => {
