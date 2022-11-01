@@ -106,7 +106,7 @@ function buildImageJsxFactoryTest(tree) {
     };
 }
 function sha256(data) {
-    return node_crypto.createHash("sha256").update(data).digest("base64");
+    return node_crypto.createHash("sha256").update(data).digest("hex");
 }
 function generateImportDeclaration(path, index) {
     return {

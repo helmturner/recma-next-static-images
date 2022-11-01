@@ -160,7 +160,7 @@ function buildImageJsxFactoryTest(tree: ESTree.Program) {
 }
 
 function sha256(data: node_crypto.BinaryLike) {
-  return node_crypto.createHash("sha256").update(data).digest("base64");
+  return node_crypto.createHash("sha256").update(data).digest("hex");
 }
 
 function generateImportDeclaration(
