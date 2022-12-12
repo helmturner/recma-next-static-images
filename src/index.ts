@@ -5,26 +5,26 @@ import node_fetch from "node-fetch";
 import node_crypto from "node:crypto";
 import { visit, SKIP, CONTINUE } from "estree-util-visit";
 
-import type * as Node from "node-fetch";
+import type * as NodeFetch from "node-fetch";
 import type * as Unified from "unified";
-import type * as ESTree from "estree-jsx";
-import type * as Util from "estree-util-visit";
+import type * as ESTreeJsx from "estree-jsx";
+import type * as TreeWalker from "estree-util-visit";
 
 export type Options =
   | {
       cacheDirectory: string | undefined;
       customFetch: (
-        input: Node.RequestInfo,
-        init?: Node.RequestInit | undefined
-      ) => Promise<Node.Response>;
+        input: NodeFetch.RequestInfo,
+        init?: NodeFetch.RequestInit | undefined
+      ) => Promise<NodeFetch.Response>;
     }
   | null
   | undefined;
 
 const recmaStaticImages: Unified.Plugin<
   [(Options | undefined | void)?],
-  ESTree.Program,
-  ESTree.Program
+  ESTreeJsx.Program,
+  ESTreeJsx.Program
 > = function (options) {
   // deconstruct options (if provided) and set defaults where applicable
   const { cacheDirectory, customFetch: _fetch = node_fetch } = options ?? {};
@@ -40,12 +40,13 @@ const recmaStaticImages: Unified.Plugin<
 
     let imageCounter = 0;
     const sourceDirectory = vfile.history[0].replace(/[^/]*$/, "");
-    const imports: (ESTree.ImportDeclaration | undefined)[] = [];
+    const imports: (ESTreeJsx.ImportDeclaration | undefined)[] = [];
     const isImageJsxFactory = buildImageJsxFactoryTest(tree);
 
     await visitAsync(tree, isImageJsxFactory, async function (node) {
       const [argument0, argument1, ...rest] = node.arguments;
-      const newProperties: (ESTree.Property | ESTree.SpreadElement)[] = [];
+      const newProperties: (ESTreeJsx.Property | ESTreeJsx.SpreadElement)[] =
+        [];
 
       for (const property of argument1.properties) {
         if (
@@ -109,12 +110,12 @@ const recmaStaticImages: Unified.Plugin<
 export default recmaStaticImages;
 
 function prependImportsToTree(
-  tree: ESTree.Program,
-  imports: (ESTree.ImportDeclaration | undefined)[]
+  tree: ESTreeJsx.Program,
+  imports: (ESTreeJsx.ImportDeclaration | undefined)[]
 ) {
   return visitAsync(
     tree,
-    (node): node is ESTree.Program => node.type === "Program",
+    (node): node is ESTreeJsx.Program => node.type === "Program",
     async function (node) {
       for (const declaration of imports) {
         if (declaration) node.body.unshift(declaration);
@@ -123,7 +124,7 @@ function prependImportsToTree(
   );
 }
 
-function buildImageJsxFactoryTest(tree: ESTree.Program) {
+function buildImageJsxFactoryTest(tree: ESTreeJsx.Program) {
   const names = new Set<string>();
   visit(tree, (node) => {
     if (
@@ -136,14 +137,16 @@ function buildImageJsxFactoryTest(tree: ESTree.Program) {
     }
     return CONTINUE;
   });
-  return function (node: Util.Node): node is ESTree.SimpleCallExpression & {
-    callee: ESTree.Identifier;
+  return function (
+    node: TreeWalker.Node
+  ): node is ESTreeJsx.SimpleCallExpression & {
+    callee: ESTreeJsx.Identifier;
     arguments: [
-      component: ESTree.MemberExpression & {
-        property: ESTree.Identifier & { name: "img" };
+      component: ESTreeJsx.MemberExpression & {
+        property: ESTreeJsx.Identifier & { name: "img" };
       },
-      children: ESTree.ObjectExpression,
-      ...rest: (ESTree.Expression | ESTree.SpreadElement)[]
+      children: ESTreeJsx.ObjectExpression,
+      ...rest: (ESTreeJsx.Expression | ESTreeJsx.SpreadElement)[]
     ];
   } {
     return (
@@ -166,7 +169,7 @@ function sha256(data: node_crypto.BinaryLike) {
 function generateImportDeclaration(
   path: string,
   index: number
-): ESTree.ImportDeclaration {
+): ESTreeJsx.ImportDeclaration {
   return {
     source: {
       type: "Literal",
@@ -186,7 +189,7 @@ function generateImportDeclaration(
 }
 
 // eslint-disable-next-line unicorn/prevent-abbreviations
-function buildSrcPropertyNode(index: number): ESTree.Property {
+function buildSrcPropertyNode(index: number): ESTreeJsx.Property {
   return {
     type: "Property",
     key: {
@@ -207,10 +210,10 @@ function buildSrcPropertyNode(index: number): ESTree.Property {
  * No async visitor is provided, so we must make our own.
  * @see https://github.com/syntax-tree/unist-util-visit-parents/issues/8
  */
-async function visitAsync<T extends Util.Node>(
-  tree: ESTree.Program,
-  test: (node: Util.Node) => node is T,
-  asyncVisitor: (node: T) => Promise<ReturnType<Util.Visitor>>
+async function visitAsync<T extends TreeWalker.Node>(
+  tree: ESTreeJsx.Program,
+  test: (node: TreeWalker.Node) => node is T,
+  asyncVisitor: (node: T) => Promise<ReturnType<TreeWalker.Visitor>>
 ) {
   const matches: T[] = [];
   visit(tree, (node) => {

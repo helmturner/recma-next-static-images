@@ -1,15 +1,25 @@
 {
-    "name": "recma-next-static-images",
-    "version": "1.0.2",
+    "name": "@helmturner/recma-next-static-images",
+    "version": "1.0.3",
     "type": "module",
+    "licenses": [
+        {
+            "type": "ISC",
+            "url": "https://opensource.org/licenses/ISC"
+        }],
     "engines": {
         "node": ">=14.16"
     },
     "description": "recma plugin to make @mdx-js/loader play nice with @next/image for static pages",
-    "exports": "./index.js",
+    "exports": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "scripts": {
         "lint": "eslint --ext .js,.ts ./",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "build": "tsc && npm run lint && npm pack --pack-destination ./dist",
+        "prepublishOnly": "yarn run build",
+        "publishUnstable": "npm publish ./dist/*.tgz --tag unstable",
+        "publish": "npm publish ./dist/*.tgz"
     },
     "eslintConfig": {
         "env": {
@@ -65,5 +75,8 @@
         "estree-util-visit": "^1.2.0",
         "node-fetch": "^3.2.10",
         "unist-util-is": "^5.1.1"
-    }
+    },
+    "files": [
+        "dist"
+    ]
 }
