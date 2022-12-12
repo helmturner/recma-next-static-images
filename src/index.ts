@@ -12,12 +12,12 @@ import type * as Util from "estree-util-visit";
 
 export type Options =
   | {
-      cacheDirectory: string | undefined;
-      customFetch: (
-        input: Node.RequestInfo,
-        init?: Node.RequestInit | undefined
-      ) => Promise<Node.Response>;
-    }
+    cacheDirectory: string | undefined;
+    customFetch: (
+      input: Node.RequestInfo,
+      init?: Node.RequestInit | undefined
+    ) => Promise<Node.Response>;
+  }
   | null
   | undefined;
 
@@ -26,6 +26,7 @@ const recmaStaticImages: Unified.Plugin<
   ESTree.Program,
   ESTree.Program
 > = function (options) {
+  //TODO wrap this in a getCache() method or similar and test
   // deconstruct options (if provided) and set defaults where applicable
   const { cacheDirectory, customFetch: _fetch = node_fetch } = options ?? {};
   if (!cacheDirectory) throw new Error("cacheDirectory is required");
@@ -34,6 +35,7 @@ const recmaStaticImages: Unified.Plugin<
   const cache = node_path.resolve(cacheDirectory).replace(/\/+$/, "");
   if (!node_fs.existsSync(cache)) node_fs.mkdirSync(cache);
 
+  //TODO make this a named function to export for testing
   return async function (tree, vfile) {
     if (!vfile.history[0])
       throw new Error(`File history is empty for ${vfile}`);
@@ -48,6 +50,7 @@ const recmaStaticImages: Unified.Plugin<
       const newProperties: (ESTree.Property | ESTree.SpreadElement)[] = [];
 
       for (const property of argument1.properties) {
+        //TODO encapsulate and test this - what exactly are we testing here?
         if (
           property.type !== "Property" ||
           property.key.type !== "Identifier" ||
@@ -56,14 +59,19 @@ const recmaStaticImages: Unified.Plugin<
           typeof property.value.value !== "string"
         ) {
           newProperties.push(property);
+          //? should imageCounter get incremented here also since we exit early? 
           continue;
         }
 
         imageCounter += 1;
+        // ? This is ambiguous - what are we extracting here
         const value = property.value.value;
+
+        //TODO encapsulate this into testable fetchRemote and fetchLocal methods
         let url: URL | undefined;
         let buffer: Buffer | undefined;
 
+        // ? Are we sure this always fails/catches as expected? could we validate more explicitly?
         try {
           // will fail for relative paths
           url = new URL(value);
@@ -85,6 +93,7 @@ const recmaStaticImages: Unified.Plugin<
         if (!buffer)
           throw new Error(`Failed to read the file from ${url?.href}`);
 
+        //TODO encapsulate this string manipulation into a testabale entity
         const extension = node_path.extname(value).replace(/(\?|#).*$/, "");
         const path = `${cache}/${sha256(buffer)}${extension}`;
         const declaration = generateImportDeclaration(path, imageCounter);
@@ -102,12 +111,14 @@ const recmaStaticImages: Unified.Plugin<
         ...rest,
       ];
     });
+    // ? returns a promise we're not awaiting - verify that's correct
     prependImportsToTree(tree, imports);
   };
 };
 
 export default recmaStaticImages;
 
+//todo track this async train
 function prependImportsToTree(
   tree: ESTree.Program,
   imports: (ESTree.ImportDeclaration | undefined)[]
@@ -123,6 +134,7 @@ function prependImportsToTree(
   );
 }
 
+// TODO unit test this
 function buildImageJsxFactoryTest(tree: ESTree.Program) {
   const names = new Set<string>();
   visit(tree, (node) => {
@@ -146,6 +158,7 @@ function buildImageJsxFactoryTest(tree: ESTree.Program) {
       ...rest: (ESTree.Expression | ESTree.SpreadElement)[]
     ];
   } {
+    //TODO extract this condition and test with datasets
     return (
       node.type === "CallExpression" &&
       "callee" in node &&
@@ -159,10 +172,11 @@ function buildImageJsxFactoryTest(tree: ESTree.Program) {
   };
 }
 
-function sha256(data: node_crypto.BinaryLike) {
+export function sha256(data: node_crypto.BinaryLike) {
   return node_crypto.createHash("sha256").update(data).digest("hex");
 }
 
+// TODO Unit test this
 function generateImportDeclaration(
   path: string,
   index: number
@@ -186,6 +200,7 @@ function generateImportDeclaration(
 }
 
 // eslint-disable-next-line unicorn/prevent-abbreviations
+//TODO ? figure out where we might be getting duplicate identifiers - fuzz test?
 function buildSrcPropertyNode(index: number): ESTree.Property {
   return {
     type: "Property",
